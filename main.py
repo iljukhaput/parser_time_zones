@@ -13,13 +13,13 @@ def get_ip():
         return None
 
 
-def get_time_zone(ip, token):
+def get_time_zone(session, ip, token):
     url_table = 'https://geoip.maxmind.com/geoip/v2.1/city/' + ip + '?demo=1'
     token_in_request = 'Bearer ' + token
     headers = {
         'Authorization': token_in_request
         }
-    response = requests.get(url_table, headers=headers)
+    response = session.get(url_table, headers=headers)
     if response.status_code == 200:
         time_zone = response.json()['location']['time_zone']
         return time_zone
@@ -27,13 +27,24 @@ def get_time_zone(ip, token):
         return None
 
 
-def get_token(x_csrf_token, cookie):
+def get_x_csrf_token(session):
+    url = 'https://www.maxmind.com/en/geoip2-precision-demo'
+    response = session.get(url)
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    content = soup.find('div', class_='content')
+    token_str = content.find('script').text
+    i = token_str.rfind('X_CSRF_TOKEN')  # looking for the token in the string
+    x_csrf_token = token_str[i+len('X_CSRF_TOKEN = "'):-3]  # cut out the token value
+
+    return x_csrf_token
+
+
+def get_token(session, x_csrf_token):
     url = 'https://www.maxmind.com/en/geoip2/demo/token'
     headers = {
-                'X-Csrf-Token': x_csrf_token,
-                'Cookie': cookie
+                'X-Csrf-Token': x_csrf_token
                 }
-    session = requests.Session()
     response = session.post(url, headers=headers)
     if response.status_code == 201:
         token = response.json()['token']
@@ -65,31 +76,20 @@ def write_to_file(time_zone, regions):
                 file.write(regions[i] + '\n')
 
 
-def get_x_csrf_token():
-    x_csrf_token = input("Enter X-Csrf-Token: ")
-    return x_csrf_token
-
-
-def get_cookie_val():
-    cookie = input("Enter cookie: ")
-    return cookie
-
-
 def test_task():
     ip = get_ip()
     if ip is None:
         print("ip not received")
         sys.exit(1)
 
-    x_csrf_token = get_x_csrf_token()
-    cookie = get_cookie_val()
-
-    token = get_token(x_csrf_token, cookie)  # this is necessary to correctly formulate a get-request for time_zone
+    # on the maxmind.com
+    session = requests.Session()
+    x_csrf_token = get_x_csrf_token(session)
+    token = get_token(session, x_csrf_token)  # this is necessary to correctly formulate a get-request for time_zone
     if token is None:
         print("token not received")
         sys.exit(1)
-
-    time_zone = get_time_zone(ip, token)
+    time_zone = get_time_zone(session, ip, token)
     if time_zone is None:
         print("time zone not received")
         sys.exit(1)
